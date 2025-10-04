@@ -21,13 +21,13 @@ LANGUAGES = {
     "Türkçe": {"label": "🇹🇷 Türkçe (Turkish)", "code": "tr"},
     "Français": {"label": "🇫🇷 Français (French)", "code": "fr"},
     "Español": {"label": "🇪🇸 Español (Spanish)", "code": "es"},
-    "Afrikaans": {"label": "🇿🇦 Afrikaans (Afrikaans)", "code": "af"},
-    "العربية": {"label": "🇸🇦 العربية (Arabic)", "code": "ar"},
-    "Tiếng Việt": {"label": "🇻🇳 Tiếng Việt (Vietnamese)", "code": "vi"},
-    "isiXhosa": {"label": "🇿🇦 isiXhosa (Xhosa)", "code": "xh"},
-    "ייִדיש": {"label": "🇮🇱 ייִדיש (Yiddish)", "code": "yi"},
-    "Yorùbá": {"label": "🇳🇬 Yorùbá (Yoruba)", "code": "yo"},
-    "isiZulu": {"label": "🇿🇦 isiZulu (Zulu)", "code": "zu"},
+    "Afrikaans": {"label": "🇿🇦 Afrikaans", "code": "af"},
+    "العربية": {"label": "🇸🇦 العربية", "code": "ar"},
+    "Tiếng Việt": {"label": "🇻🇳 Tiếng Việt", "code": "vi"},
+    "isiXhosa": {"label": "🇿🇦 isiXhosa", "code": "xh"},
+    "ייִדיש": {"label": "🇮🇱 ייִדיש", "code": "yi"},
+    "Yorùbá": {"label": "🇳🇬 Yorùbá", "code": "yo"},
+    "isiZulu": {"label": "🇿🇦 isiZulu", "code": "zu"},
 }
 
 # ----------------- UI Strings -----------------
@@ -41,31 +41,8 @@ UI_STRINGS_EN = {
     "translate_dataset_checkbox": "Translate dataset column names (may take time)",
     "mention_label": "Official NASA Website",
     "button_response": "Hooray",
-    "about_us": "This dashboard explores NASA bioscience publications dynamically.",
+    "about_us": "This dashboard explores NASA bioscience publications dynamically."
 }
-
-MORE_INFO_TEXT = """
-### What our website does:
-Our website summarizes all the PDF publications provided to our AI. To start, you enter keywords. Then, our AI searches for those keywords across the selected PDF publications and simplifies and explains the content of each PDF.
-
-**Q: How does the language feature work?**  
-**A:** [Your answer here]
-
-**Q: Can I enable dark mode?**  
-**A:** Yes, click the three dots on the top right, go to settings, and click 'Use system setting' or 'Light'. Once clicked, select 'Dark'. If it turns dark, just click the cross mark on top.
-
-**Q: What did we develop?**  
-**A:** Our development addresses the challenge by providing a solution that simplifies the process and makes it more efficient for users to achieve their goals.
-
-**Q: Why is it important?**  
-**A:** [Your answer here]
-
-**Q: Any other info we should know?**  
-**A:** [Your answer here]
-
-### About Us:
-We are a group of innovators that are extremely eager to learn. Blah blah testing.
-"""
 
 # ----------------- Helper Functions -----------------
 def extract_json_from_text(text):
@@ -132,52 +109,53 @@ if "page" not in st.session_state:
 # ----------------- Page Config -----------------
 st.set_page_config(page_title="NASA BioSpace Dashboard", layout="wide")
 
-# ----------------- Sidebar -----------------
-with st.sidebar:
-    # Page selection (Main vs More Info)
-    page_option = st.radio(
-        "Navigate",
-        options=["Main", "More Info"],
-        index=0 if st.session_state.page == "main" else 1,
-        horizontal=False
-    )
-    st.session_state.page = "main" if page_option == "Main" else "more_info"
+# ----------------- Bottom Left “More Info” Button -----------------
+more_info_button = st.button("More Info")
+if more_info_button:
+    st.session_state.page = "more_info"
 
-    # Language selection
-    lang_choice = st.selectbox(
-        "🌐 Choose language",
-        options=list(LANGUAGES.keys()),
-        format_func=lambda x: LANGUAGES[x]["label"],
-        index=list(LANGUAGES.keys()).index(st.session_state.current_lang)
-    )
-    if lang_choice != st.session_state.current_lang:
-        rain(emoji="⏳", font_size=54, falling_speed=5, animation_length=2)
-        with st.spinner(f"Translating UI to {lang_choice}..."):
-            try:
-                if lang_choice in st.session_state.translations:
-                    translated_strings = st.session_state.translations[lang_choice]
-                else:
-                    translated_strings = translate_dict_via_gemini(
-                        st.session_state.translations["English"], lang_choice
-                    )
-                    st.session_state.translations[lang_choice] = translated_strings
-                st.session_state.current_lang = lang_choice
-            except Exception as e:
-                st.error("Translation failed — using English. Error: " + str(e))
-                translated_strings = st.session_state.translations["English"]
-                st.session_state.current_lang = "English"
-    else:
-        translated_strings = st.session_state.translations[st.session_state.current_lang]
+# ----------------- Page Routing -----------------
+if st.session_state.page == "more_info":
+    st.write("Hello world")
+    if st.button("Back"):
+        st.session_state.page = "main"
+else:
+    # ----------------- Sidebar -----------------
+    with st.sidebar:
+        # Language selection
+        lang_choice = st.selectbox(
+            "🌐 Choose language",
+            options=list(LANGUAGES.keys()),
+            format_func=lambda x: LANGUAGES[x]["label"],
+            index=list(LANGUAGES.keys()).index(st.session_state.current_lang)
+        )
 
-    # CSV upload
-    if st.session_state.page == "main":
+        if lang_choice != st.session_state.current_lang:
+            rain(emoji="⏳", font_size=54, falling_speed=5, animation_length=2)
+            with st.spinner(f"Translating UI to {lang_choice}..."):
+                try:
+                    if lang_choice in st.session_state.translations:
+                        translated_strings = st.session_state.translations[lang_choice]
+                    else:
+                        translated_strings = translate_dict_via_gemini(
+                            st.session_state.translations["English"],
+                            lang_choice
+                        )
+                        st.session_state.translations[lang_choice] = translated_strings
+                    st.session_state.current_lang = lang_choice
+                except Exception as e:
+                    st.error("Translation failed — using English. Error: " + str(e))
+                    translated_strings = st.session_state.translations["English"]
+                    st.session_state.current_lang = "English"
+        else:
+            translated_strings = st.session_state.translations[st.session_state.current_lang]
+
+        # CSV upload
         uploaded_csv = st.file_uploader(translated_strings["upload_label"], type=["csv"])
+
+        # PDF upload
         uploaded_pdfs = st.file_uploader("Upload PDFs", type=["pdf"], accept_multiple_files=True)
 
-# ----------------- Main or More Info -----------------
-if st.session_state.page == "more_info":
-    st.markdown(MORE_INFO_TEXT)
-else:
     # ----------------- Main UI -----------------
     st.title(translated_strings["title"])
     st.write(translated_strings["description"])
