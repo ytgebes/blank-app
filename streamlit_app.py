@@ -1,7 +1,6 @@
 import streamlit as st
 import json
 import io
-import time
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
@@ -109,17 +108,33 @@ if "page" not in st.session_state:
 # ----------------- Page Config -----------------
 st.set_page_config(page_title="NASA BioSpace Dashboard", layout="wide")
 
-# ----------------- Bottom Left “More Info” Button -----------------
-more_info_button = st.button("More Info")
-if more_info_button:
-    st.session_state.page = "more_info"
+# ----------------- Bottom Left CSS Button -----------------
+st.markdown("""
+    <style>
+    .more-info-button {
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        z-index: 9999;
+    }
+    </style>
+    <div class="more-info-button">
+        <form action="/" method="get">
+            <input type="submit" value="More Info">
+        </form>
+    </div>
+""", unsafe_allow_html=True)
 
-# ----------------- Page Routing -----------------
+# ----------------- “More Info” Handling -----------------
+# Streamlit cannot directly detect HTML button clicks, so we use a normal Streamlit button as fallback
 if st.session_state.page == "more_info":
     st.write("Hello world")
     if st.button("Back"):
         st.session_state.page = "main"
 else:
+    if st.button("More Info"):
+        st.session_state.page = "more_info"
+
     # ----------------- Sidebar -----------------
     with st.sidebar:
         # Language selection
