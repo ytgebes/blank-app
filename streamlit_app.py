@@ -8,16 +8,18 @@ from bs4 import BeautifulSoup
 import PyPDF2
 from functools import lru_cache
 from streamlit_extras.let_it_rain import rain
+import streamlit as st
 from streamlit_extras.mention import mention
+import io
 import google.generativeai as genai
+MODEL_NAME = "gemini-2.5-flash"
 
-# --- CONFIGURATION ---
-MODEL_NAME = "gemini-1.5-flash"  # Corrected model name for better compatibility
-st.set_page_config(page_title="Houston! We have a Problem!", layout="wide")
+# Gemini Ai
+st.set_page_config(page_title="Houston! We have a!", layout="wide")
 
-# --- GEMINI AI SETUP ---
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    MODEL_NAME = "gemini-2.5-flash"
 except Exception as e:
     st.error(f"Error configuring Gemini AI: {e}")
     st.stop()
@@ -25,10 +27,8 @@ except Exception as e:
 # --- INITIALIZE SESSION STATE ---
 if 'summary_dict' not in st.session_state:
     st.session_state.summary_dict = {}
-if 'lang' not in st.session_state:
-    st.session_state.lang = "English"
-
-# --- STYLING (No changes needed here) ---
+    
+# Everything with style / ux
 st.markdown("""
     <style>
     /* Custom Nav button container for the top-left */
@@ -54,6 +54,9 @@ st.markdown("""
     /* HIDE STREAMLIT'S DEFAULT NAVIGATION (Sidebar hamburger menu) */
     [data-testid="stSidebar"] { display: none; }
     
+    /* 🟢 FIX: Remove the hidden page link CSS to make the nav button visible */
+    /* [data-testid="stPageLink"] { display: none; } */ 
+
     /* Push content to the top */
     .block-container { padding-top: 1rem !important; }
     
@@ -120,50 +123,80 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
-
-# --- TRANSLATIONS ---
-TRANSLATIONS = {
-    "English": {
-        "page_title": "Houston! We have a Problem!",
-        "header": 'Houston! We Have A<span style="color: #6A1B9A;"> Problem!</span>',
-        "subheader": "Search, Discover, and Summarize NASA's Bioscience Publications",
-        "search_placeholder": "Search publications... TELL US MORE!",
-        "results_found": "Found {count} matching publications:",
-        "no_results": "No matching publications found.",
-        "summarize_button": "🔬 Gather & Summarize",
-        "spinner_text": "Accessing and summarizing: {title}...",
-        "summary_failed": "❌ Failed to Summarize:",
-        "summary_error": "Error fetching/summarizing content: {error}",
-        "assistant_ai_button": "Assistant AI 💬"
-    },
-    "Español": {
-        "page_title": "¡Houston tenemos un problema!",
-        "header": '¡Houston! Tenemos un<span style="color: #6A1B9A;"> Problema!</span>',
-        "subheader": "Busque, Descubra y Resuma las Publicaciones de Biociencia de la NASA",
-        "search_placeholder": "Buscar publicaciones... ¡CUÉNTANOS MÁS!",
-        "results_found": "Se encontraron {count} publicaciones coincidentes:",
-        "no_results": "No se encontraron publicaciones que coincidan.",
-        "summarize_button": "🔬 Recopilar y Resumir",
-        "spinner_text": "Accediendo y resumiendo: {title}...",
-        "summary_failed": "❌ Falló al Resumir:",
-        "summary_error": "Error al obtener/resumir el contenido: {error}",
-        "assistant_ai_button": "Asistente IA 💬"
-    },
-    "Français": {
-        "page_title": "Houston ! Nous avons un problème !",
-        "header": 'Houston ! Nous avons un<span style="color: #6A1B9A;"> Problème !</span>',
-        "subheader": "Recherchez, Découvrez et Résumez les Publications de biosciences de la NASA",
-        "search_placeholder": "Rechercher des publications... DITES-NOUS EN PLUS !",
-        "results_found": "{count} publications correspondantes trouvées :",
-        "no_results": "Aucune publication correspondante trouvée.",
-        "summarize_button": "🔬 Rassembler et Résumer",
-        "spinner_text": "Accès et résumé de : {title}...",
-        "summary_failed": "❌ Échec du Résumé :",
-        "summary_error": "Erreur lors de la récupération/résumé du contenu : {error}",
-        "assistant_ai_button": "Assistant IA 💬"
-    }
-    # Add other languages here following the same structure...
+# Languages
+LANGUAGES = {
+    "English": {"label": "English (English)", "code": "en"},
+    "Türkçe": {"label": "Türkçe (Turkish)", "code": "tr"},
+    "Français": {"label": "Français (French)", "code": "fr"},
+    "Español": {"label": "Español (Spanish)", "code": "es"},
+    "Afrikaans": {"label": "Afrikaans (Afrikaans)", "code": "af"},
+    "العربية": {"label": "العربية (Arabic)", "code": "ar"},
+    "Tiếng Việt": {"label": "Tiếng Việt (Vietnamese)", "code": "vi"},
+    "isiXhosa": {"label": "isiXhosa (Xhosa)", "code": "xh"},
+    "ייִדיש": {"label": "ייִדיש (Yiddish)", "code": "yi"},
+    "Yorùbá": {"label": "Yorùbá (Yoruba)", "code": "yo"},
+    "isiZulu": {"label": "isiZulu (Zulu)", "code": "zu"},
+    "Deutsch": {"label": "Deutsch (German)", "code": "de"},
+    "Italiano": {"label": "Italiano (Italian)", "code": "it"},
+    "Русский": {"label": "Русский (Russian)", "code": "ru"},
+    "日本語": {"label": "日本語 (Japanese)", "code": "ja"},
+    "한국어": {"label": "한국어 (Korean)", "code": "ko"},
+    "Polski": {"label": "Polski (Polish)", "code": "pl"},
+    "Nederlands": {"label": "Nederlands (Dutch)", "code": "nl"},
+    "Svenska": {"label": "Svenska (Swedish)", "code": "sv"},
+    "Dansk": {"label": "Dansk (Danish)", "code": "da"},
+    "Norsk": {"label": "Norsk (Norwegian)", "code": "no"},
+    "Suomi": {"label": "Suomi (Finnish)", "code": "fi"},
+    "हिन्दी": {"label": "हिन्दी (Hindi)", "code": "hi"},
+    "বাংলা": {"label": "বাংলা (Bengali)", "code": "bn"},
+    "ગુજરાતી": {"label": "ગુજરાતી (Gujarati)", "code": "gu"},
+    "ಕನ್ನಡ": {"label": "ಕನ್ನಡ (Kannada)", "code": "kn"},
+    "മലയാളം": {"label": "മലയാളം (Malayalam)", "code": "ml"},
+    "मराठी": {"label": "मराठी (Marathi)", "code": "mr"},
+    "ਪੰਜਾਬੀ": {"label": "ਪੰਜਾਬੀ (Punjabi)", "code": "pa"},
+    "தமிழ்": {"label": "தமிழ் (Tamil)", "code": "ta"},
+    "తెలుగు": {"label": "తెలుగు (Telugu)", "code": "te"},
+    "Odia": {"label": "Odia (Odia)", "code": "or"},
+    "עברית": {"label": "עברית (Hebrew)", "code": "he"},
+    "فارسی": {"label": "فارسی (Persian)", "code": "fa"},
+    "ไทย": {"label": "ไทย (Thai)", "code": "th"},
+    "Bahasa Indonesia": {"label": "Bahasa Indonesia (Indonesian)", "code": "id"},
+    "Malay": {"label": "Malay (Malay)", "code": "ms"},
+    "Shqip": {"label": "Shqip (Albanian)", "code": "sq"},
+    "Azərbaycan": {"label": "Azərbaycan (Azerbaijani)", "code": "az"},
+    "Беларуская": {"label": "Беларуская (Belarusian)", "code": "be"},
+    "Bosanski": {"label": "Bosanski (Bosnian)", "code": "bs"},
+    "Български": {"label": "Български (Bulgarian)", "code": "bg"},
+    "Hrvatski": {"label": "Hrvatski (Croatian)", "code": "hr"},
+    "Čeština": {"label": "Čeština (Czech)", "code": "cs"},
+    "Ελληνικά": {"label": "Ελληνικά (Greek)", "code": "el"},
+    "Eesti": {"label": "Eesti (Estonian)", "code": "et"},
+    "Latviešu": {"label": "Latviešu (Latvian)", "code": "lv"},
+    "Lietuvių": {"label": "Lietuvių (Lithuanian)", "code": "lt"},
+    "Magyar": {"label": "Magyar (Hungarian)", "code": "hu"},
+    "Slovenčina": {"label": "Slovenčina (Slovak)", "code": "sk"},
+    "Slovenščina": {"label": "Slovenščina (Slovenian)", "code": "sl"},
+    "ქართული": {"label": "ქართული (Georgian)", "code": "ka"},
+    "Հայերեն": {"label": "Հայերեն (Armenian)", "code": "hy"},
+    "Қазақша": {"label": "Қазақша (Kazakh)", "code": "kk"},
+    "Кыргызча": {"label": "Кыргызча (Kyrgyz)", "code": "ky"},
+    "Монгол": {"label": "Монгол (Mongolian)", "code": "mn"},
+    "Српски": {"label": "Српски (Serbian)", "code": "sr"},
+    "Словенски": {"label": "Словенски (Slovene)", "code": "sl"},
+    "தமிழ்": {"label": "தமிழ் (Tamil)", "code": "ta"},
+    "ગુજરાતી": {"label": "ગુજરાતી (Gujarati)", "code": "gu"},
+    "हिन्दी": {"label": "हिन्दी (Hindi)", "code": "hi"},
 }
+
+# UI strings, PLEASE KEEP UNCOMMENTED FOR NOW.
+#UI_STRINGS_EN = {
+   # "title": "Simplified Knowledge",
+    #"description": "A dynamic dashboard that summarizes NASA bioscience publications and explores impacts and results.",
+    #"ask_label": "Ask anything:",
+    #"response_label": "Response:",
+    #"about_us": "This dashboard explores NASA bioscience publications dynamically.",    
+    #"translate_dataset_checkbox": "Translate dataset column names"
+#}
 
 # --- HELPER FUNCTIONS ---
 @st.cache_data
@@ -218,98 +251,122 @@ def summarize_text_with_gemini(text: str):
         return f"ERROR_GEMINI: {e}"
 
 # --- MAIN PAGE FUNCTION ---
+        
+# Page
 def search_page():
-    # --- LANGUAGE SELECTION ---
-    # Use columns to place the language selector on the right
-    _, col2 = st.columns([0.85, 0.15]) # Adjust ratio as needed
-    with col2:
-        selected_lang = st.selectbox(
-            "Select Language",
-            options=list(TRANSLATIONS.keys()),
-            index=list(TRANSLATIONS.keys()).index(st.session_state.lang),
-            label_visibility="collapsed"
-        )
-    
-    if selected_lang != st.session_state.lang:
-        st.session_state.lang = selected_lang
-        st.rerun()
-
-    # Load the correct set of translations
-    T = TRANSLATIONS[st.session_state.lang]
-
-    # Set the translated page title
-    st.set_page_config(page_title=T["page_title"], layout="wide")
-
-    # Custom HTML Button for Assistant AI (using the translated text)
+    # 🟢 FIX: Custom HTML Button for Assistant AI
     st.markdown(
-        f'<div class="nav-container-ai"><div class="nav-button-ai"><a href="/Assistant_AI" target="_self">{T["assistant_ai_button"]}</a></div></div>',
+        '<div class="nav-container-ai"><div class="nav-button-ai"><a href="/Assistant_AI" target="_self">Assistant AI 💬</a></div></div>',
         unsafe_allow_html=True
     )
         
-    # --- UI Header (using translated text) ---
+    # --- UI Header ---
     df = load_data("SB_publication_PMC.csv")
-    st.markdown(f'<h1>{T["header"]}</h1>', unsafe_allow_html=True)
-    st.markdown(f'<h3>{T["subheader"]}</h3>')
+    st.markdown('<h1>Houston! We Have A<span style="color: #6A1B9A;"> Problem!</span></h1>', unsafe_allow_html=True)
+    st.markdown("### Search, Discover, and Summarize NASA's Bioscience Publications")
 
-    search_query = st.text_input(
-        "Search publications...", 
-        placeholder=T["search_placeholder"], 
-        label_visibility="collapsed"
-    )
+    search_query = st.text_input("Search publications...", placeholder="TELL US MORE!", label_visibility="collapsed")
     
     # --- Search Logic ---
     if search_query:
         mask = df["Title"].astype(str).str.contains(search_query, case=False, na=False)
         results_df = df[mask].reset_index(drop=True)
         st.markdown("---")
-        st.subheader(T["results_found"].format(count=len(results_df)))
+        st.subheader(f"Found {len(results_df)} matching publications:")
         
         if results_df.empty:
-            st.warning(T["no_results"])
+            st.warning("No matching publications found.")
         else:
+            # Clear all session state summary variables to ensure clean display
             if 'summary_dict' not in st.session_state:
-                st.session_state.summary_dict = {}
+                 st.session_state.summary_dict = {}
             
+            # SINGLE COLUMN DISPLAY LOOP (Stable)
             for idx, row in results_df.iterrows():
                 summary_key = f"summary_{idx}"
                 
                 with st.container():
-                    st.markdown('<div class="result-card">', unsafe_allow_html=True)
+                    st.markdown(f'<div class="result-card">', unsafe_allow_html=True)
                     
+                    # Title
                     st.markdown(f"**Title:** <a href='{row['Link']}' target='_blank'>{row['Title']}</a>", unsafe_allow_html=True)
                     
-                    if st.button(T["summarize_button"], key=f"btn_summarize_{idx}"):
-                        spinner_text = T["spinner_text"].format(title=row['Title'])
-                        with st.spinner(spinner_text):
+                    # Button
+                    if st.button("🔬 Gather & Summarize", key=f"btn_summarize_{idx}"):
+                        
+                        # GENERATE SUMMARY IMMEDIATELY UPON CLICK
+                        with st.spinner(f"Accessing and summarizing: {row['Title']}..."):
                             try:
                                 text = fetch_url_text(row['Link'])
                                 summary = summarize_text_with_gemini(text)
                                 st.session_state.summary_dict[summary_key] = summary
                             except Exception as e:
                                 st.session_state.summary_dict[summary_key] = f"CRITICAL_ERROR: {e}"
+                        
+                        # Use rerun to ensure the display updates correctly across the whole page
                         st.rerun()
 
+                    # DISPLAY SUMMARY IF IT EXISTS FOR THIS PUBLICATION
                     if summary_key in st.session_state.summary_dict:
                         summary_content = st.session_state.summary_dict[summary_key]
+                        
                         st.markdown('<div class="summary-display">', unsafe_allow_html=True)
                         
                         if summary_content.startswith("ERROR") or summary_content.startswith("CRITICAL_ERROR"):
-                            st.markdown(f'**{T["summary_failed"]}** *{row["Title"]}*', unsafe_allow_html=True)
-                            error_message = T["summary_error"].format(error=summary_content)
-                            st.error(error_message)
+                            st.markdown(f"**❌ Failed to Summarize:** *{row['Title']}*", unsafe_allow_html=True)
+                            st.error(f"Error fetching/summarizing content: {summary_content}")
                         else:
+                            # Display the summary without an extra box, just the clean markdown
                             st.markdown(summary_content)
                             
                         st.markdown('</div>', unsafe_allow_html=True)
                             
-                    st.markdown("</div>", unsafe_allow_html=True)
+                    st.markdown("</div>", unsafe_allow_html=True) 
+    
+#Everything commented below is for backup just in case someething doesn't work DO NOT DELETE.
+    # PDF upload
+#st.sidebar.success(f"✅ {len(uploaded_files)} PDF(s) uploaded")
+#for uploaded_file in uploaded_files:
+        #pdf_bytes = io.BytesIO(uploaded_file.read())
+        #pdf_reader = PyPDF2.PdfReader(pdf_bytes)
+        #text = ""
+        #for page in pdf_reader.pages:
+            #text += page.extract_text() or ""
 
-# --- APP NAVIGATION ---
-# This setup uses Streamlit's new multipage app feature.
-# Ensure you have a 'pages' directory with 'Assistant_AI.py' in it.
+        # Summarize each PDF
+        #with st.spinner(f"Summarizing: {uploaded_file.name} ..."):
+            #summary = summarize_text_with_gemini(text)
+#else:
+    #st.sidebar.info("Upload one or more PDF files to get summaries, try again!.")
+
+# THIS IS FOR UPLOADING PDF
+#with st.sidebar:
+  #  st.markdown("<h3 style='margin: 0; padding: 0;'>Upload PDFs to Summarize</h3>", unsafe_allow_html=True)
+    #uploaded_files = st.file_uploader(label="", type=["pdf"], accept_multiple_files=True)
+
+#if uploaded_files:
+    #st.success(f"✅ {len(uploaded_files)} PDF(s) uploaded and summarized")
+    #for uploaded_file in uploaded_files:
+        #pdf_bytes = io.BytesIO(uploaded_file.read())
+        #pdf_reader = PyPDF2.PdfReader(pdf_bytes)
+        #text = "".join([p.extract_text() or "" for p in pdf_reader.pages])
+        #with st.spinner(f"Summarizing: {uploaded_file.name} ..."):
+            #summary = summarize_text_with_gemini(text)
+        #st.markdown(f"### 📄 Summary: {uploaded_file.name}")
+        #st.write(summary)
+
+# Translate dataset
+#original_cols = list(df.columns)
+
+#if st.session_state.current_lang != "English":
+    #translated_cols = translate_list_via_gemini(original_cols, st.session_state.current_lang)
+    #df.rename(columns=dict(zip(original_cols, translated_cols)), inplace=True)
+
+# Deleted QUICK AI CHAT
+# Replaced with page button, and sepearated
 pg = st.navigation([
     st.Page(search_page, title="Simplified Knowledge 🔍"),
     st.Page("pages/Assistant_AI.py", title="Assistant AI 💬", icon="💬"),
 ])
 
-pg.run()
+pg.run()    
