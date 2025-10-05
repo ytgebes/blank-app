@@ -1,244 +1,372 @@
 import streamlit as st
 import json
 import io
+import time
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 import PyPDF2
 from functools import lru_cache
 from streamlit_extras.let_it_rain import rain
+import streamlit as st
 from streamlit_extras.mention import mention
+import io
 import google.generativeai as genai
+MODEL_NAME = "gemini-2.5-flash"
 
-# ----------------- Configure Gemini API -----------------
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-model = genai.GenerativeModel("gemini-2.5-flash")
+# Gemini Ai
+st.set_page_config(page_title="Houston! We have a!", layout="wide")
 
-# ----------------- Supported Languages -----------------
+try:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    MODEL_NAME = "gemini-2.5-flash"
+except Exception as e:
+    st.error(f"Error configuring Gemini AI: {e}")
+    st.stop()
+
+# --- INITIALIZE SESSION STATE ---
+if 'summary_dict' not in st.session_state:
+    st.session_state.summary_dict = {}
+    
+# Everything with style / ux
+st.markdown("""
+    <style>
+    /* Custom Nav button container for the top-left */
+    .nav-container-ai {
+        display: flex;
+        justify-content: flex-start;
+        padding-top: 3rem; 
+        padding-bottom: 0rem;
+    }
+    .nav-button-ai a {
+        background-color: #6A1B9A; /* Purple color */
+        color: white; 
+        padding: 10px 20px;
+        border-radius: 8px; 
+        text-decoration: none; 
+        font-weight: bold;
+        transition: background-color 0.3s ease;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    .nav-button-ai a:hover { 
+        background-color: #4F0A7B; /* Darker purple on hover */
+    }
+    /* HIDE STREAMLIT'S DEFAULT NAVIGATION (Sidebar hamburger menu) */
+    [data-testid="stSidebar"] { display: none; }
+    
+    /* 🟢 FIX: Remove the hidden page link CSS to make the nav button visible */
+    /* [data-testid="stPageLink"] { display: none; } */ 
+
+    /* Push content to the top */
+    .block-container { padding-top: 1rem !important; }
+    
+    /* Ensure no residual custom nav container is active */
+    .nav-container { display: none; } 
+
+    /* Main Theme */
+    h1, h3 { text-align: center; }
+    h1 { font-size: 4.5em !important; padding-bottom: 0.5rem; color: #000000; }
+    h3 { color: #333333; }
+    input[type="text"] {
+        color: #000000 !important; background-color: #F0F2F6 !important;
+        border: 1px solid #CCCCCC !important; border-radius: 8px; padding: 14px;
+    }
+    
+    /* Result Card Styling (Full-Width) */
+    .result-card {
+        background-color: #FAFAFA; 
+        padding: 1.5rem; 
+        border-radius: 10px;
+        margin-bottom: 1.5rem; /* More space between cards for UX */
+        border: 1px solid #E0E0E0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    /* Title Styling */
+    .result-card .stMarkdown strong { 
+        font-size: 1.15em; 
+        display: block;
+        margin-bottom: 10px; 
+    }
+
+    /* Consistent Purple Link Color */
+    a { color: #6A1B9A; text-decoration: none; font-weight: bold; }
+    a:hover { text-decoration: underline; }
+    
+    /* Summary Container (The inner block for summary text) */
+    .summary-display {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px dashed #CCC;
+    }
+    
+    /* BUTTON: Full-width button now replaced with auto-width for single column */
+    .stButton>button {
+        border-radius: 8px; 
+        width: auto; /* Auto width based on content */
+        min-width: 200px; 
+        background-color: #E6E0FF;
+        color: #4F2083; 
+        border: 1px solid #C5B3FF; 
+        font-weight: bold;
+        transition: background-color 0.3s ease;
+    }
+    .stButton>button:hover { background-color: #D6C9FF; border: 1px solid #B098FF; }
+    
+    /* Ensure Markdown headers in the summary are readable */
+    .summary-display h3 {
+        text-align: left !important;
+        color: #4F2083;
+        margin-top: 15px;
+        margin-bottom: 5px;
+        font-size: 1.3em;
+    }
+    </style>
+""", unsafe_allow_html=True)
+# Languages
 LANGUAGES = {
-    "English": {"label": "🇺🇸 English (English)", "code": "en"},
-    "Türkçe": {"label": "🇹🇷 Türkçe (Turkish)", "code": "tr"},
-    "Français": {"label": "🇫🇷 Français (French)", "code": "fr"},
-    "Español": {"label": "🇪🇸 Español (Spanish)", "code": "es"},
-    "Afrikaans": {"label": "🇿🇦 Afrikaans", "code": "af"},
-    "العربية": {"label": "🇸🇦 العربية", "code": "ar"},
-    "Tiếng Việt": {"label": "🇻🇳 Tiếng Việt", "code": "vi"},
-    "isiXhosa": {"label": "🇿🇦 isiXhosa", "code": "xh"},
-    "ייִדיש": {"label": "🇮🇱 ייִדיש", "code": "yi"},
-    "Yorùbá": {"label": "🇳🇬 Yorùbá", "code": "yo"},
-    "isiZulu": {"label": "🇿🇦 isiZulu", "code": "zu"},
+    "English": {"label": "English (English)", "code": "en"},
+    "Türkçe": {"label": "Türkçe (Turkish)", "code": "tr"},
+    "Français": {"label": "Français (French)", "code": "fr"},
+    "Español": {"label": "Español (Spanish)", "code": "es"},
+    "Afrikaans": {"label": "Afrikaans (Afrikaans)", "code": "af"},
+    "العربية": {"label": "العربية (Arabic)", "code": "ar"},
+    "Tiếng Việt": {"label": "Tiếng Việt (Vietnamese)", "code": "vi"},
+    "isiXhosa": {"label": "isiXhosa (Xhosa)", "code": "xh"},
+    "ייִדיש": {"label": "ייִדיש (Yiddish)", "code": "yi"},
+    "Yorùbá": {"label": "Yorùbá (Yoruba)", "code": "yo"},
+    "isiZulu": {"label": "isiZulu (Zulu)", "code": "zu"},
+    "Deutsch": {"label": "Deutsch (German)", "code": "de"},
+    "Italiano": {"label": "Italiano (Italian)", "code": "it"},
+    "Русский": {"label": "Русский (Russian)", "code": "ru"},
+    "日本語": {"label": "日本語 (Japanese)", "code": "ja"},
+    "한국어": {"label": "한국어 (Korean)", "code": "ko"},
+    "Polski": {"label": "Polski (Polish)", "code": "pl"},
+    "Nederlands": {"label": "Nederlands (Dutch)", "code": "nl"},
+    "Svenska": {"label": "Svenska (Swedish)", "code": "sv"},
+    "Dansk": {"label": "Dansk (Danish)", "code": "da"},
+    "Norsk": {"label": "Norsk (Norwegian)", "code": "no"},
+    "Suomi": {"label": "Suomi (Finnish)", "code": "fi"},
+    "हिन्दी": {"label": "हिन्दी (Hindi)", "code": "hi"},
+    "বাংলা": {"label": "বাংলা (Bengali)", "code": "bn"},
+    "ગુજરાતી": {"label": "ગુજરાતી (Gujarati)", "code": "gu"},
+    "ಕನ್ನಡ": {"label": "ಕನ್ನಡ (Kannada)", "code": "kn"},
+    "മലയാളം": {"label": "മലയാളം (Malayalam)", "code": "ml"},
+    "मराठी": {"label": "मराठी (Marathi)", "code": "mr"},
+    "ਪੰਜਾਬੀ": {"label": "ਪੰਜਾਬੀ (Punjabi)", "code": "pa"},
+    "தமிழ்": {"label": "தமிழ் (Tamil)", "code": "ta"},
+    "తెలుగు": {"label": "తెలుగు (Telugu)", "code": "te"},
+    "Odia": {"label": "Odia (Odia)", "code": "or"},
+    "עברית": {"label": "עברית (Hebrew)", "code": "he"},
+    "فارسی": {"label": "فارسی (Persian)", "code": "fa"},
+    "ไทย": {"label": "ไทย (Thai)", "code": "th"},
+    "Bahasa Indonesia": {"label": "Bahasa Indonesia (Indonesian)", "code": "id"},
+    "Malay": {"label": "Malay (Malay)", "code": "ms"},
+    "Shqip": {"label": "Shqip (Albanian)", "code": "sq"},
+    "Azərbaycan": {"label": "Azərbaycan (Azerbaijani)", "code": "az"},
+    "Беларуская": {"label": "Беларуская (Belarusian)", "code": "be"},
+    "Bosanski": {"label": "Bosanski (Bosnian)", "code": "bs"},
+    "Български": {"label": "Български (Bulgarian)", "code": "bg"},
+    "Hrvatski": {"label": "Hrvatski (Croatian)", "code": "hr"},
+    "Čeština": {"label": "Čeština (Czech)", "code": "cs"},
+    "Ελληνικά": {"label": "Ελληνικά (Greek)", "code": "el"},
+    "Eesti": {"label": "Eesti (Estonian)", "code": "et"},
+    "Latviešu": {"label": "Latviešu (Latvian)", "code": "lv"},
+    "Lietuvių": {"label": "Lietuvių (Lithuanian)", "code": "lt"},
+    "Magyar": {"label": "Magyar (Hungarian)", "code": "hu"},
+    "Slovenčina": {"label": "Slovenčina (Slovak)", "code": "sk"},
+    "Slovenščina": {"label": "Slovenščina (Slovenian)", "code": "sl"},
+    "ქართული": {"label": "ქართული (Georgian)", "code": "ka"},
+    "Հայերեն": {"label": "Հայերեն (Armenian)", "code": "hy"},
+    "Қазақша": {"label": "Қазақша (Kazakh)", "code": "kk"},
+    "Кыргызча": {"label": "Кыргызча (Kyrgyz)", "code": "ky"},
+    "Монгол": {"label": "Монгол (Mongolian)", "code": "mn"},
+    "Српски": {"label": "Српски (Serbian)", "code": "sr"},
+    "Словенски": {"label": "Словенски (Slovene)", "code": "sl"},
+    "தமிழ்": {"label": "தமிழ் (Tamil)", "code": "ta"},
+    "ગુજરાતી": {"label": "ગુજરાતી (Gujarati)", "code": "gu"},
+    "हिन्दी": {"label": "हिन्दी (Hindi)", "code": "hi"},
 }
 
-# ----------------- UI Strings -----------------
-UI_STRINGS_EN = {
-    "title": "Simplified Knowledge",
-    "description": "A dynamic dashboard that summarizes NASA bioscience publications and explores impacts and results.",
-    "upload_label": "Upload CSV data",
-    "ask_label": "Ask anything:",
-    "response_label": "Response:",
-    "click_button": "Click here, nothing happens",
-    "translate_dataset_checkbox": "Translate dataset column names (may take time)",
-    "mention_label": "Official NASA Website",
-    "button_response": "Hooray",
-    "about_us": "This dashboard explores NASA bioscience publications dynamically."
-}
+# UI strings, PLEASE KEEP UNCOMMENTED FOR NOW.
+#UI_STRINGS_EN = {
+   # "title": "Simplified Knowledge",
+    #"description": "A dynamic dashboard that summarizes NASA bioscience publications and explores impacts and results.",
+    #"ask_label": "Ask anything:",
+    #"response_label": "Response:",
+    #"about_us": "This dashboard explores NASA bioscience publications dynamically.",    
+    #"translate_dataset_checkbox": "Translate dataset column names"
+#}
 
-# ----------------- Helper Functions (unchanged) -----------------
-def extract_json_from_text(text):
-    start = text.find('{')
-    end = text.rfind('}')
-    if start == -1 or end == -1:
-        raise ValueError("No JSON object found in model output.")
-    return json.loads(text[start:end+1])
-
-def translate_dict_via_gemini(source_dict: dict, target_lang_name: str):
-    prompt = (
-        f"Translate the VALUES of the following JSON object into {target_lang_name}.\n"
-        "Return ONLY a JSON object with the same keys and translated values (no commentary).\n"
-        f"Input JSON:\n{json.dumps(source_dict, ensure_ascii=False)}\n"
-    )
-    resp = model.generate_content(prompt)
-    return extract_json_from_text(resp.text)
-
-def translate_list_via_gemini(items: list, target_lang_name: str):
-    prompt = (
-        f"Translate this list of short strings into {target_lang_name}. "
-        f"Return a JSON array of translated strings in the same order.\n"
-        f"Input: {json.dumps(items, ensure_ascii=False)}\n"
-    )
-    resp = model.generate_content(prompt)
-    start = resp.text.find('[')
-    end = resp.text.rfind(']')
-    if start == -1 or end == -1:
-        raise ValueError("No JSON array found in model output.")
-    return json.loads(resp.text[start:end+1])
-
-@lru_cache(maxsize=256)
-def fetch_url_text(url):
+# --- HELPER FUNCTIONS ---
+@st.cache_data
+def load_data(file_path): 
     try:
-        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
-        r.raise_for_status()
+        return pd.read_csv(file_path)
+    except FileNotFoundError:
+        st.error(f"File not found: {file_path}. Please ensure 'SB_publication_PMC.csv' is in the directory.")
+        st.stop()
     except Exception as e:
-        return f"ERROR_FETCH: {str(e)}"
+        st.error(f"Error loading data: {e}")
+        st.stop()
 
+@lru_cache(maxsize=128)
+def fetch_url_text(url: str):
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(url, headers=headers, timeout=20)
+        r.raise_for_status()
+    except requests.exceptions.RequestException as e: 
+        return f"ERROR_FETCH: {e}"
+    
     content_type = r.headers.get("Content-Type", "").lower()
+    
     if "pdf" in content_type or url.lower().endswith(".pdf"):
         try:
-            pdf_bytes = io.BytesIO(r.content)
-            reader = PyPDF2.PdfReader(pdf_bytes)
-            text_parts = [p.extract_text() or "" for p in reader.pages]
-            return "\n".join(text_parts)
-        except Exception as e:
-            return f"ERROR_PDF_PARSE: {str(e)}"
+            with io.BytesIO(r.content) as f:
+                reader = PyPDF2.PdfReader(f)
+                return "\n".join(p.extract_text() for p in reader.pages if p.extract_text())
+        except Exception as e: 
+            return f"ERROR_PDF_PARSE: {e}"
     else:
         try:
             soup = BeautifulSoup(r.text, "html.parser")
-            paragraphs = [p.get_text(strip=True) for p in soup.find_all("p") if p.get_text(strip=True)]
-            return "\n\n".join(paragraphs)[:20000] if paragraphs else "ERROR_EXTRACT: No text found"
-        except Exception as e:
-            return f"ERROR_HTML_PARSE: {str(e)}"
+            for tag in soup(['script', 'style']): tag.decompose()
+            # Truncate content for Gemini model context limit
+            return " ".join(soup.body.get_text(separator=" ", strip=True).split())[:25000]
+        except Exception as e: 
+            return f"ERROR_HTML_PARSE: {e}"
 
-# ----------------- Session State -----------------
-if "current_lang" not in st.session_state:
-    st.session_state.current_lang = "English"
-if "translations" not in st.session_state:
-    st.session_state.translations = {"English": UI_STRINGS_EN.copy()}
-if "page" not in st.session_state:
-    st.session_state.page = "main"
-if "uploaded_csv_bytes" not in st.session_state:
-    st.session_state.uploaded_csv_bytes = None
-if "uploaded_pdfs_bytes" not in st.session_state:
-    st.session_state.uploaded_pdfs_bytes = []
+def summarize_text_with_gemini(text: str):
+    if not text or text.startswith("ERROR"): 
+        return f"Could not summarize due to a content error: {text.split(': ')[-1]}"
 
-# ----------------- Page Config -----------------
-st.set_page_config(page_title="NASA BioSpace Dashboard", layout="wide")
-
-# ----------------- Sidebar (left column) -----------------
-with st.sidebar:
-    page_choice = st.radio(
-        "Pages",
-        ["Main", "More Info"],
-        index=0 if st.session_state.page == "main" else 1
-    )
-    st.session_state.page = page_choice.lower().replace(" ", "_")
-
-    st.markdown("---")
-
-    lang_choice = st.selectbox(
-        "🌐 Choose language",
-        options=list(LANGUAGES.keys()),
-        format_func=lambda x: LANGUAGES[x]["label"],
-        index=list(LANGUAGES.keys()).index(st.session_state.current_lang)
-    )
-
-    if lang_choice != st.session_state.current_lang:
-        rain(emoji="⏳", font_size=54, falling_speed=5, animation_length=2)
-        with st.spinner(f"Translating UI to {lang_choice}..."):
-            try:
-                if lang_choice in st.session_state.translations:
-                    translated_strings = st.session_state.translations[lang_choice]
-                else:
-                    translated_strings = translate_dict_via_gemini(
-                        st.session_state.translations["English"],
-                        lang_choice
-                    )
-                    st.session_state.translations[lang_choice] = translated_strings
-                st.session_state.current_lang = lang_choice
-            except Exception as e:
-                st.error("Translation failed — using English. Error: " + str(e))
-                translated_strings = st.session_state.translations["English"]
-                st.session_state.current_lang = "English"
-    else:
-        translated_strings = st.session_state.translations[st.session_state.current_lang]
-
-    uploaded_csv = st.file_uploader(translated_strings["upload_label"], type=["csv"])
-    if uploaded_csv is not None:
-        st.session_state.uploaded_csv_bytes = uploaded_csv.read()
-
-    uploaded_pdfs = st.file_uploader("Upload PDFs", type=["pdf"], accept_multiple_files=True)
-    if uploaded_pdfs:
-        st.session_state.uploaded_pdfs_bytes = []
-        for f in uploaded_pdfs:
-            st.session_state.uploaded_pdfs_bytes.append({"name": f.name, "bytes": f.read()})
-
-    st.markdown("---")
-    if page_choice == "More Info":
-        st.header("More Info")
-        st.write("This dashboard summarizes NASA bioscience publications and provides tools for exploration.")
-        st.write("- Upload CSV to load publication metadata.")
-        st.write("- Upload PDFs to extract text.")
-        st.write("- Use the search box on the main area to filter titles.")
-        st.write(translated_strings.get("about_us", ""))
-
-# ----------------- Main UI -----------------
-st.title(translated_strings["title"])
-st.write(translated_strings["description"])
-mention(
-    label=translated_strings["mention_label"],
-    icon="NASA International Space Apps Challenge",
-    url="https://www.spaceappschallenge.org/"
-)
-
-# Load CSV
-if st.session_state.uploaded_csv_bytes:
+    prompt = (f"Summarize this NASA bioscience paper. Output in clean Markdown with a level 3 heading (###) titled 'Key Findings' (using bullet points) and a level 3 heading (###) titled 'Overview Summary' (using a paragraph).\n\nContent:\n{text}")
+    
     try:
-        csv_bytes_io = io.BytesIO(st.session_state.uploaded_csv_bytes)
-        df = pd.read_csv(csv_bytes_io)
-        st.success(f"Loaded {len(df)} rows")
-        st.dataframe(df.head())
-        original_cols = df.columns.tolist()
-    except Exception as e:
-        st.error(f"Failed to load CSV from memory: {e}")
-        df = pd.DataFrame()
-        original_cols = []
-else:
-    df = pd.DataFrame()
-    original_cols = []
+        model = genai.GenerativeModel(MODEL_NAME)
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e: 
+        return f"ERROR_GEMINI: {e}"
 
-# Extract PDFs
-if st.session_state.uploaded_pdfs_bytes:
-    st.success(f"{len(st.session_state.uploaded_pdfs_bytes)} PDF(s) available")
-    for pdf_entry in st.session_state.uploaded_pdfs_bytes:
-        try:
-            pdf_bytes = io.BytesIO(pdf_entry["bytes"])
-            pdf_reader = PyPDF2.PdfReader(pdf_bytes)
-            text = "".join([p.extract_text() or "" for p in pdf_reader.pages])
-            st.write(f"Extracted {len(text)} characters from {pdf_entry['name']}")
-        except Exception as e:
-            st.error(f"Failed to extract {pdf_entry['name']}: {e}")
+# --- MAIN PAGE FUNCTION ---
+        
+# Page
+def search_page():
+    # 🟢 FIX: Custom HTML Button for Assistant AI
+    st.markdown(
+        '<div class="nav-container-ai"><div class="nav-button-ai"><a href="/Assistant_AI" target="_self">Assistant AI 💬</a></div></div>',
+        unsafe_allow_html=True
+    )
+        
+    # --- UI Header ---
+    df = load_data("SB_publication_PMC.csv")
+    st.markdown('<h1>Houston! We Have A<span style="color: #6A1B9A;"> Problem!</span></h1>', unsafe_allow_html=True)
+    st.markdown("### Search, Discover, and Summarize NASA's Bioscience Publications")
 
-# More Info page
-if st.session_state.page == "more_info":
-    st.subheader("Detailed Project Info")
-    st.write("Here you can put longer documentation, contribution guidelines, dataset schema, contact info, etc.")
-    st.write(translated_strings.get("about_us", ""))
-    if st.button("Back to Main"):
-        st.session_state.page = "main"
+    search_query = st.text_input("Search publications...", placeholder="TELL US MORE!", label_visibility="collapsed")
+    
+    # --- Search Logic ---
+    if search_query:
+        mask = df["Title"].astype(str).str.contains(search_query, case=False, na=False)
+        results_df = df[mask].reset_index(drop=True)
+        st.markdown("---")
+        st.subheader(f"Found {len(results_df)} matching publications:")
+        
+        if results_df.empty:
+            st.warning("No matching publications found.")
+        else:
+            # Clear all session state summary variables to ensure clean display
+            if 'summary_dict' not in st.session_state:
+                 st.session_state.summary_dict = {}
+            
+            # SINGLE COLUMN DISPLAY LOOP (Stable)
+            for idx, row in results_df.iterrows():
+                summary_key = f"summary_{idx}"
+                
+                with st.container():
+                    st.markdown(f'<div class="result-card">', unsafe_allow_html=True)
+                    
+                    # Title
+                    st.markdown(f"**Title:** <a href='{row['Link']}' target='_blank'>{row['Title']}</a>", unsafe_allow_html=True)
+                    
+                    # Button
+                    if st.button("🔬 Gather & Summarize", key=f"btn_summarize_{idx}"):
+                        
+                        # GENERATE SUMMARY IMMEDIATELY UPON CLICK
+                        with st.spinner(f"Accessing and summarizing: {row['Title']}..."):
+                            try:
+                                text = fetch_url_text(row['Link'])
+                                summary = summarize_text_with_gemini(text)
+                                st.session_state.summary_dict[summary_key] = summary
+                            except Exception as e:
+                                st.session_state.summary_dict[summary_key] = f"CRITICAL_ERROR: {e}"
+                        
+                        # Use rerun to ensure the display updates correctly across the whole page
+                        st.rerun()
 
-else:
-    translate_dataset = st.checkbox(translated_strings["translate_dataset_checkbox"])
-    if translate_dataset and original_cols and st.session_state.current_lang != "English":
-        translated_cols = translate_list_via_gemini(original_cols, st.session_state.current_lang)
-        df.rename(columns=dict(zip(original_cols, translated_cols)), inplace=True)
+                    # DISPLAY SUMMARY IF IT EXISTS FOR THIS PUBLICATION
+                    if summary_key in st.session_state.summary_dict:
+                        summary_content = st.session_state.summary_dict[summary_key]
+                        
+                        st.markdown('<div class="summary-display">', unsafe_allow_html=True)
+                        
+                        if summary_content.startswith("ERROR") or summary_content.startswith("CRITICAL_ERROR"):
+                            st.markdown(f"**❌ Failed to Summarize:** *{row['Title']}*", unsafe_allow_html=True)
+                            st.error(f"Error fetching/summarizing content: {summary_content}")
+                        else:
+                            # Display the summary without an extra box, just the clean markdown
+                            st.markdown(summary_content)
+                            
+                        st.markdown('</div>', unsafe_allow_html=True)
+                            
+                    st.markdown("</div>", unsafe_allow_html=True) 
+    
+#Everything commented below is for backup just in case someething doesn't work DO NOT DELETE.
+    # PDF upload
+#st.sidebar.success(f"✅ {len(uploaded_files)} PDF(s) uploaded")
+#for uploaded_file in uploaded_files:
+        #pdf_bytes = io.BytesIO(uploaded_file.read())
+        #pdf_reader = PyPDF2.PdfReader(pdf_bytes)
+        #text = ""
+        #for page in pdf_reader.pages:
+            #text += page.extract_text() or ""
 
-    query = st.text_input("Enter keyword to search publications")
-    if query and not df.empty:
-        results = df[df["Title"].astype(str).str.contains(query, case=False, na=False)]
-        st.subheader(f"Results: {len(results)} matching titles")
-    else:
-        results = pd.DataFrame(columns=df.columns)
+        # Summarize each PDF
+        #with st.spinner(f"Summarizing: {uploaded_file.name} ..."):
+            #summary = summarize_text_with_gemini(text)
+#else:
+    #st.sidebar.info("Upload one or more PDF files to get summaries, try again!.")
 
-    for idx, row in results.iterrows():
-        title = row.get("Title", "No title")
-        link = row.get("Link", "#")
-        st.markdown(f"**[{title}]({link})**")
+# THIS IS FOR UPLOADING PDF
+#with st.sidebar:
+  #  st.markdown("<h3 style='margin: 0; padding: 0;'>Upload PDFs to Summarize</h3>", unsafe_allow_html=True)
+    #uploaded_files = st.file_uploader(label="", type=["pdf"], accept_multiple_files=True)
 
-    user_input = st.text_input(translated_strings["ask_label"], key="gemini_input")
-    if user_input:
-        with st.spinner("Generating..."):
-            resp = model.generate_content(user_input)
-            st.subheader(translated_strings["response_label"])
-            st.write(resp.text)
+#if uploaded_files:
+    #st.success(f"✅ {len(uploaded_files)} PDF(s) uploaded and summarized")
+    #for uploaded_file in uploaded_files:
+        #pdf_bytes = io.BytesIO(uploaded_file.read())
+        #pdf_reader = PyPDF2.PdfReader(pdf_bytes)
+        #text = "".join([p.extract_text() or "" for p in pdf_reader.pages])
+        #with st.spinner(f"Summarizing: {uploaded_file.name} ..."):
+            #summary = summarize_text_with_gemini(text)
+        #st.markdown(f"### 📄 Summary: {uploaded_file.name}")
+        #st.write(summary)
 
-    if st.button(translated_strings["click_button"]):
-        st.write(translated_strings["button_response"])
+# Translate dataset
+#original_cols = list(df.columns)
+
+#if st.session_state.current_lang != "English":
+    #translated_cols = translate_list_via_gemini(original_cols, st.session_state.current_lang)
+    #df.rename(columns=dict(zip(original_cols, translated_cols)), inplace=True)
+
+# Deleted QUICK AI CHAT
+# Replaced with page button, and sepearated
+pg = st.navigation([
+    st.Page(search_page, title="Simplified Knowledge 🔍"),
+    st.Page("pages/Assistant_AI.py", title="Assistant AI 💬", icon="💬"),
+])
+
+pg.run()    
