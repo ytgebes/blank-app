@@ -14,7 +14,7 @@ import io
 import google.generativeai as genai
 
 # --- CONFIGURATION ---
-MODEL_NAME = "gemini-1.5-flash"  # Use a powerful model for translations
+MODEL_NAME = "gemini-1.5-flash-latest"
 st.set_page_config(page_title="Houston! We have a problem!", layout="wide")
 
 # --- GEMINI AI SETUP ---
