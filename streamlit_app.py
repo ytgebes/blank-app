@@ -219,12 +219,14 @@ def search_page():
         lang_choice = st.selectbox("🌐 Choose language", list(LANGUAGES.keys()), index=list(LANGUAGES.keys()).index(st.session_state.current_lang) if st.session_state.current_lang in LANGUAGES else 0)
         st.session_state.current_lang = lang_choice
 
-    # Choose UI strings based on language - currently only English strings exist
     if st.session_state.current_lang == "English":
-        UI_STRINGS = UI_STRINGS_EN
+        UI_STRINGS_CURRENT = UI_STRINGS_EN
     else:
-        # Fallback to English for any languages not yet translated
-        UI_STRINGS = UI_STRINGS_EN
+        # Translate English strings dynamically
+        UI_STRINGS_CURRENT = translate_list_via_gemini(list(UI_STRINGS_EN.values()), st.session_state.current_lang)
+        # convert back to a dictionary
+        UI_STRINGS_CURRENT = dict(zip(UI_STRINGS_EN.keys(), UI_STRINGS_CURRENT))
+
 
     # --- UI Header ---
     df = load_data("SB_publication_PMC.csv")
@@ -290,6 +292,9 @@ def search_page():
                             
                     st.markdown("</div>", unsafe_allow_html=True) 
 
+
+
+
 # EVERYTHING commented below is for backup just in case something doesn't work DO NOT DELETE.
     # PDF upload
 #st.sidebar.success(f"✅ {len(uploaded_files)} PDF(s) uploaded")
@@ -325,9 +330,9 @@ def search_page():
 # Translate dataset
 #original_cols = list(df.columns)
 
-#if st.session_state.current_lang != "English":
-    #translated_cols = translate_list_via_gemini(original_cols, st.session_state.current_lang)
-    #df.rename(columns=dict(zip(original_cols, translated_cols)), inplace=True)
+if st.session_state.current_lang != "English":
+    translated_cols = translate_list_via_gemini(original_cols, st.session_state.current_lang)
+    df.rename(columns=dict(zip(original_cols, translated_cols)), inplace=True)
 
 # --- Run main page ---
 if __name__ == "__main__":
