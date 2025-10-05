@@ -178,7 +178,7 @@ def perform_translation(lang_choice: str):
         return st.session_state.translated_strings
 
     # visual animation and spinner (approx 6 seconds)
-    rain(emoji="⏳", font_size=54, falling_speed=5, animation_length=4)
+    rain(emoji="⏳", font_size=54, falling_speed=5, animation_length=3)
     with st.spinner(f"Translating UI to {lang_choice}..."):
         # ensure the spinner + animation last long enough
         start_t = time.time()
