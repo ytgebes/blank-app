@@ -346,9 +346,6 @@ st.markdown("---")
 st.write(f"The content below would be displayed in the selected language.")
 st.info(f"Language Selector Status: **{st.session_state.current_lang}** (Code: **{selected_language_code}**)")
 
-# Example Content
-st.header("Main Content Area 📄")
-st.write("This is the main body of your Streamlit application, which now flows beneath the floating language selector in the top-right corner.")
 
 # --- HELPER FUNCTIONS (Copied from original, unchanged) ---
 @st.cache_data
