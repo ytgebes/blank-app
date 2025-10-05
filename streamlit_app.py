@@ -8,10 +8,9 @@ from bs4 import BeautifulSoup
 import PyPDF2
 from functools import lru_cache
 from streamlit_extras.let_it_rain import rain
-import streamlit as st
 from streamlit_extras.mention import mention
-import io
 import google.generativeai as genai
+
 MODEL_NAME = "gemini-2.5-flash"
 
 # Gemini Ai
@@ -27,7 +26,11 @@ except Exception as e:
 # --- INITIALIZE SESSION STATE ---
 if 'summary_dict' not in st.session_state:
     st.session_state.summary_dict = {}
-    
+if 'current_lang' not in st.session_state:
+    st.session_state.current_lang = "English"
+if 'translate_dataset' not in st.session_state:
+    st.session_state.translate_dataset = False
+
 # Everything with style / ux
 st.markdown("""
     <style>
@@ -123,80 +126,26 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
+
 # Languages
 LANGUAGES = {
     "English": {"label": "English (English)", "code": "en"},
-    "Türkçe": {"label": "Türkçe (Turkish)", "code": "tr"},
-    "Français": {"label": "Français (French)", "code": "fr"},
-    "Español": {"label": "Español (Spanish)", "code": "es"},
-    "Afrikaans": {"label": "Afrikaans (Afrikaans)", "code": "af"},
-    "العربية": {"label": "العربية (Arabic)", "code": "ar"},
-    "Tiếng Việt": {"label": "Tiếng Việt (Vietnamese)", "code": "vi"},
-    "isiXhosa": {"label": "isiXhosa (Xhosa)", "code": "xh"},
-    "ייִדיש": {"label": "ייִדיש (Yiddish)", "code": "yi"},
-    "Yorùbá": {"label": "Yorùbá (Yoruba)", "code": "yo"},
-    "isiZulu": {"label": "isiZulu (Zulu)", "code": "zu"},
-    "Deutsch": {"label": "Deutsch (German)", "code": "de"},
-    "Italiano": {"label": "Italiano (Italian)", "code": "it"},
-    "Русский": {"label": "Русский (Russian)", "code": "ru"},
-    "日本語": {"label": "日本語 (Japanese)", "code": "ja"},
-    "한국어": {"label": "한국어 (Korean)", "code": "ko"},
-    "Polski": {"label": "Polski (Polish)", "code": "pl"},
-    "Nederlands": {"label": "Nederlands (Dutch)", "code": "nl"},
-    "Svenska": {"label": "Svenska (Swedish)", "code": "sv"},
-    "Dansk": {"label": "Dansk (Danish)", "code": "da"},
-    "Norsk": {"label": "Norsk (Norwegian)", "code": "no"},
-    "Suomi": {"label": "Suomi (Finnish)", "code": "fi"},
-    "हिन्दी": {"label": "हिन्दी (Hindi)", "code": "hi"},
-    "বাংলা": {"label": "বাংলা (Bengali)", "code": "bn"},
-    "ગુજરાતી": {"label": "ગુજરાતી (Gujarati)", "code": "gu"},
-    "ಕನ್ನಡ": {"label": "ಕನ್ನಡ (Kannada)", "code": "kn"},
     "മലയാളം": {"label": "മലയാളം (Malayalam)", "code": "ml"},
-    "मराठी": {"label": "मराठी (Marathi)", "code": "mr"},
-    "ਪੰਜਾਬੀ": {"label": "ਪੰਜਾਬੀ (Punjabi)", "code": "pa"},
-    "தமிழ்": {"label": "தமிழ் (Tamil)", "code": "ta"},
-    "తెలుగు": {"label": "తెలుగు (Telugu)", "code": "te"},
-    "Odia": {"label": "Odia (Odia)", "code": "or"},
-    "עברית": {"label": "עברית (Hebrew)", "code": "he"},
-    "فارسی": {"label": "فارسی (Persian)", "code": "fa"},
-    "ไทย": {"label": "ไทย (Thai)", "code": "th"},
-    "Bahasa Indonesia": {"label": "Bahasa Indonesia (Indonesian)", "code": "id"},
-    "Malay": {"label": "Malay (Malay)", "code": "ms"},
-    "Shqip": {"label": "Shqip (Albanian)", "code": "sq"},
-    "Azərbaycan": {"label": "Azərbaycan (Azerbaijani)", "code": "az"},
-    "Беларуская": {"label": "Беларуская (Belarusian)", "code": "be"},
-    "Bosanski": {"label": "Bosanski (Bosnian)", "code": "bs"},
-    "Български": {"label": "Български (Bulgarian)", "code": "bg"},
-    "Hrvatski": {"label": "Hrvatski (Croatian)", "code": "hr"},
-    "Čeština": {"label": "Čeština (Czech)", "code": "cs"},
-    "Ελληνικά": {"label": "Ελληνικά (Greek)", "code": "el"},
-    "Eesti": {"label": "Eesti (Estonian)", "code": "et"},
     "Latviešu": {"label": "Latviešu (Latvian)", "code": "lv"},
     "Lietuvių": {"label": "Lietuvių (Lithuanian)", "code": "lt"},
     "Magyar": {"label": "Magyar (Hungarian)", "code": "hu"},
-    "Slovenčina": {"label": "Slovenčina (Slovak)", "code": "sk"},
-    "Slovenščina": {"label": "Slovenščina (Slovenian)", "code": "sl"},
-    "ქართული": {"label": "ქართული (Georgian)", "code": "ka"},
-    "Հայերեն": {"label": "Հայերեն (Armenian)", "code": "hy"},
-    "Қазақша": {"label": "Қазақша (Kazakh)", "code": "kk"},
-    "Кыргызча": {"label": "Кыргызча (Kyrgyz)", "code": "ky"},
-    "Монгол": {"label": "Монгол (Mongolian)", "code": "mn"},
-    "Српски": {"label": "Српски (Serbian)", "code": "sr"},
-    "Словенски": {"label": "Словенски (Slovene)", "code": "sl"},
-    "தமிழ்": {"label": "தமிழ் (Tamil)", "code": "ta"},
-    "ગુજરાતી": {"label": "ગુજરાતી (Gujarati)", "code": "gu"},
     "हिन्दी": {"label": "हिन्दी (Hindi)", "code": "hi"},
 }
 
 # UI strings, PLEASE KEEP UNCOMMENTED FOR NOW.
-#UI_STRINGS_EN = {
-   # "title": "Simplified Knowledge",
-    #"description": "A dynamic dashboard that summarizes NASA bioscience publications and explores impacts and results.",
-    #"ask_label": "Ask anything:",
-    #"response_label": "Response:",
-    #"about_us": "This dashboard explores NASA bioscience publications dynamically.",    
-    #"translate_dataset_checkbox": "Translate dataset column names"
-#}
+UI_STRINGS_EN = {
+    "title": "Simplified Knowledge",
+    "description": "A dynamic dashboard that summarizes NASA bioscience publications and explores impacts and results.",
+    "ask_label": "Ask anything:",
+    "response_label": "Response:",
+    "about_us": "This dashboard explores NASA bioscience publications dynamically.",
+    "translate_dataset_checkbox": "Translate dataset column names"
+}
 
 # --- HELPER FUNCTIONS ---
 @st.cache_data
@@ -259,11 +208,25 @@ def search_page():
         '<div class="nav-container-ai"><div class="nav-button-ai"><a href="/Assistant_AI" target="_self">Assistant AI 💬</a></div></div>',
         unsafe_allow_html=True
     )
-        
+
+    # Language selector - top right
+    cols = st.columns([3, 1])
+    with cols[1]:
+        lang_choice = st.selectbox("🌐 Choose language", list(LANGUAGES.keys()), index=list(LANGUAGES.keys()).index(st.session_state.current_lang) if st.session_state.current_lang in LANGUAGES else 0)
+        st.session_state.current_lang = lang_choice
+
+    # Choose UI strings based on language - currently only English strings exist
+    if st.session_state.current_lang == "English":
+        UI_STRINGS = UI_STRINGS_EN
+    else:
+        # Fallback to English for any languages not yet translated
+        UI_STRINGS = UI_STRINGS_EN
+
     # --- UI Header ---
     df = load_data("SB_publication_PMC.csv")
+    # Keep your big header while also showing the simplified title and description from UI_STRINGS
     st.markdown('<h1>Houston! We Have A<span style="color: #6A1B9A;"> Problem!</span></h1>', unsafe_allow_html=True)
-    st.markdown("### Search, Discover, and Summarize NASA's Bioscience Publications")
+    st.markdown(f"### {UI_STRINGS['description']}")
 
     search_query = st.text_input("Search publications...", placeholder="TELL US MORE!", label_visibility="collapsed")
     
@@ -322,8 +285,8 @@ def search_page():
                         st.markdown('</div>', unsafe_allow_html=True)
                             
                     st.markdown("</div>", unsafe_allow_html=True) 
-    
-#Everything commented below is for backup just in case someething doesn't work DO NOT DELETE.
+
+# EVERYTHING commented below is for backup just in case something doesn't work DO NOT DELETE.
     # PDF upload
 #st.sidebar.success(f"✅ {len(uploaded_files)} PDF(s) uploaded")
 #for uploaded_file in uploaded_files:
@@ -362,11 +325,6 @@ def search_page():
     #translated_cols = translate_list_via_gemini(original_cols, st.session_state.current_lang)
     #df.rename(columns=dict(zip(original_cols, translated_cols)), inplace=True)
 
-# Deleted QUICK AI CHAT
-# Replaced with page button, and sepearated
-pg = st.navigation([
-    st.Page(search_page, title="Simplified Knowledge 🔍"),
-    st.Page("pages/Assistant_AI.py", title="Assistant AI 💬", icon="💬"),
-])
-
-pg.run()    
+# --- Run main page ---
+if __name__ == "__main__":
+    search_page()
