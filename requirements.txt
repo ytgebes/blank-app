@@ -1,7 +1,10 @@
 streamlit
+google-generativeai
 pandas
+altair
+pillow
+streamlit-extras
+PyPDF2
 requests
 beautifulsoup4
 PyPDF2
-streamlit-extras
-google-generativeai
