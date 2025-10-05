@@ -12,10 +12,6 @@ from streamlit_extras.mention import mention
 import google.generativeai as genai
 
 
-
-# --- LANGUAGE TRANSLATION FEATURE INTEGRATION ---
-from streamlit_extras.let_it_rain import rain
-
 # UI strings in English
 UI_STRINGS_EN = {
     "title": "Simplified Knowledge",
@@ -36,6 +32,27 @@ def extract_json_from_text(text):
     if start == -1 or end == -1:
         raise ValueError("No JSON object found in model output.")
     return json.loads(text[start:end+1])
+
+LANGUAGES = {
+    "English": {"label": "English (English)", "code": "en"},
+    "Türkçe": {"label": "Türkçe (Turkish)", "code": "tr"},
+    "Français": {"label": "Français (French)", "code": "fr"},
+    "Español": {"label": "Español (Spanish)", "code": "es"},
+    # ... (other languages remain the same)
+    "Deutsch": {"label": "Deutsch (German)", "code": "de"},
+    "Italiano": {"label": "Italiano (Italian)", "code": "it"},
+    "日本語": {"label": "日本語 (Japanese)", "code": "ja"},
+    "한국어": {"label": "한국어 (Korean)", "code": "ko"},
+    "हिन्दी": {"label": "हिन्दी (Hindi)", "code": "hi"},
+    "English": "en",
+    "Spanish": "es",
+    "French": "fr",
+    "German": "de",
+    "Italian": "it",
+    "Japanese": "ja",
+    "Mandarin (Simplified)": "zh-CN",
+}
+
 
 # Helper function: translate dictionary via Gemini
 def translate_dict_via_gemini(source_dict: dict, target_lang_name: str):
