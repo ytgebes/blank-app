@@ -13,6 +13,10 @@ import google.generativeai as genai
 
 MODEL_NAME = "gemini-2.5-flash"
 
+st.title("AI Assistant 🤖")
+st.write("This page will host your AI assistant features.")
+
+
 # Gemini Ai
 st.set_page_config(page_title="Houston! We have a!", layout="wide")
 
