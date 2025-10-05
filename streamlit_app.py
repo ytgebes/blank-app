@@ -404,11 +404,19 @@ def search_page():
     # Load current translation
     translated_strings = st.session_state.translated_strings
 
-    # 1. Custom HTML Button for Assistant AI
     st.markdown(
-        '<div class="nav-container-ai"><div class="nav-button-ai"><a href="/Assistant_AI" target="_self">Assistant AI 💬</a></div></div>',
-        unsafe_allow_html=True
-    )
+    '''
+    <div class="nav-container-ai" style="display:flex; gap: 10px;">
+        <div class="nav-button-ai">
+            <a href="/Assistant_AI" target="_self">Assistant AI 💬</a>
+        </div>
+        <div class="nav-button-ai">
+            <a href="/More_Info" target="_self">More Info ℹ️</a>
+        </div>
+    </div>
+    ''',
+    unsafe_allow_html=True
+)
 
     # --- Language and PDF Sidebar Setup ---
     # Sidebar language selector: keep it in sync with top selector
