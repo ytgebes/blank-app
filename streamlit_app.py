@@ -1,3 +1,18 @@
+import streamlit as st
+import json
+import io
+import time
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
+import PyPDF2
+from functools import lru_cache
+from streamlit_extras.let_it_rain import rain
+from streamlit_extras.mention import mention
+import google.generativeai as genai
+
+
+
 # --- LANGUAGE TRANSLATION FEATURE INTEGRATION ---
 from streamlit_extras.let_it_rain import rain
 
