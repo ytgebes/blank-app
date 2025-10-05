@@ -376,10 +376,5 @@ def search_page():
                         
                     st.markdown("</div>", unsafe_allow_html=True) 
 
-# --- NAVIGATION SETUP ---
-pg = st.navigation([
-    st.Page(search_page, title="Simplified Knowledge 🔍"),
-    st.Page("pages/Assistant_AI.py", title="Assistant AI 💬", icon="💬"),
-])
-
-pg.run()
+# --- RUN THE MAIN PAGE ---
+search_page()
