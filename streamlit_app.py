@@ -342,7 +342,6 @@ perform_translation(lang_choice)
 selected_language_code = LANGUAGES.get(st.session_state.current_lang, {}).get("code", "")
 
 # --- Demonstration of Use (Main Content) ---
-st.title("Your Application Title Here")
 st.markdown("---")
 st.write(f"The content below would be displayed in the selected language.")
 st.info(f"Language Selector Status: **{st.session_state.current_lang}** (Code: **{selected_language_code}**)")
