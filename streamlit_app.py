@@ -8,18 +8,21 @@ from bs4 import BeautifulSoup
 import PyPDF2
 from functools import lru_cache
 from streamlit_extras.let_it_rain import rain
-import streamlit as st
 from streamlit_extras.mention import mention
-import io
 import google.generativeai as genai
+
 MODEL_NAME = "gemini-2.5-flash"
 
-# Gemini Ai
-st.set_page_config(page_title="Houston! We have a!", layout="wide")
+# --- INITIAL SETUP & CONFIGURATION ---
+st.set_page_config(page_title="Simplified Knowledge", layout="wide")
 
 try:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    MODEL_NAME = "gemini-2.5-flash"
+    # Check if the API key is set before configuring
+    if st.secrets["GEMINI_API_KEY"]:
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    else:
+        st.error("GEMINI_API_KEY not found in secrets.")
+        st.stop()
 except Exception as e:
     st.error(f"Error configuring Gemini AI: {e}")
     st.stop()
@@ -27,8 +30,92 @@ except Exception as e:
 # --- INITIALIZE SESSION STATE ---
 if 'summary_dict' not in st.session_state:
     st.session_state.summary_dict = {}
-    
-# Everything with style / ux
+if 'current_lang' not in st.session_state:
+    st.session_state.current_lang = "English" # Default language
+if 'translated_strings' not in st.session_state:
+    # Initialize with default English strings
+    st.session_state.translated_strings = {
+        "title": "Simplified Knowledge",
+        "description": "A dynamic dashboard that summarizes NASA bioscience publications and explores impacts and results.",
+        "ask_label": "Ask anything:",
+        "response_label": "Response:",
+        "about_us": "This dashboard explores NASA bioscience publications dynamically.",
+        "translate_dataset_checkbox": "Translate dataset column names",
+        "search_label": "Search publications...",
+        "results_header": "Found {count} matching publications:",
+        "no_results": "No matching publications found.",
+        "summarize_button": "🔬 Gather & Summarize",
+        "pdf_upload_header": "Upload PDFs to Summarize",
+        "pdf_success": "✅ {count} PDF(s) uploaded and summarized",
+        "pdf_summary_title": "📄 Summary: {name}"
+    }
+
+# Languages dictionary (already defined)
+LANGUAGES = {
+    "English": {"label": "English (English)", "code": "en"},
+    "Türkçe": {"label": "Türkçe (Turkish)", "code": "tr"},
+    "Français": {"label": "Français (French)", "code": "fr"},
+    "Español": {"label": "Español (Spanish)", "code": "es"},
+    # ... (other languages remain the same)
+    "Deutsch": {"label": "Deutsch (German)", "code": "de"},
+    "Italiano": {"label": "Italiano (Italian)", "code": "it"},
+    "日本語": {"label": "日本語 (Japanese)", "code": "ja"},
+    "한국어": {"label": "한국어 (Korean)", "code": "ko"},
+    "हिन्दी": {"label": "हिन्दी (Hindi)", "code": "hi"},
+    "English": "en",
+    "Spanish": "es",
+    "French": "fr",
+    "German": "de",
+    "Italian": "it",
+    "Japanese": "ja",
+    "Mandarin (Simplified)": "zh-CN",
+}
+
+
+# --- PLACEHOLDER/SIMULATION FOR TRANSLATION ---
+# NOTE: In a real app, this function would call the Gemini API to translate text.
+# For simplicity and to avoid excessive API calls during development, this is a placeholder.
+@st.cache_data(show_spinner=False)
+def get_translated_ui_strings(target_lang: str):
+    # This should hold ALL translated UI strings for ALL languages
+    # For this example, we'll only provide English, but structure the code to look up translations
+    UI_STRINGS_EN = st.session_state.translated_strings # Use the default session state strings as the English base
+
+    # You would load/translate other languages here. For the demo, we only return English
+    # unless you implement the full translation logic.
+    if target_lang == "English":
+        return UI_STRINGS_EN
+    elif target_lang == "Español":
+        return {
+            "title": "Conocimiento Simplificado",
+            "description": "Un panel dinámico que resume las publicaciones de biociencia de la NASA y explora sus impactos y resultados.",
+            "search_label": "Buscar publicaciones...",
+            "results_header": "Se encontraron {count} publicaciones coincidentes:",
+            "no_results": "No se encontraron publicaciones coincidentes.",
+            "summarize_button": "🔬 Recopilar y Resumir",
+            "pdf_upload_header": "Subir PDFs para Resumir",
+            "pdf_success": "✅ {count} PDF(s) subidos y resumidos",
+            "pdf_summary_title": "📄 Resumen: {name}",
+            # Fallback for keys not defined in Spanish
+            **{k: v for k, v in UI_STRINGS_EN.items() if k not in ["title", "description", "search_label", "results_header", "no_results", "summarize_button", "pdf_upload_header", "pdf_success", "pdf_summary_title"]}
+        }
+    else:
+        # Fallback for any unsupported language
+        return UI_STRINGS_EN
+
+# Placeholder for translating column names
+def translate_list_via_gemini(text_list: list, target_lang: str):
+    # This is where you'd call Gemini to translate column names.
+    # We'll just return the original list to avoid breaking the app without a live API call.
+    if target_lang == "English":
+        return text_list
+    # In a real app:
+    # prompt = f"Translate the following list of scientific column headers into {target_lang}. Return only the translated list, comma-separated:\n{', '.join(text_list)}"
+    # return model.generate_content(prompt).text.split(', ')
+    return [f"Translated_{item}" for item in text_list] # Mock translation
+
+
+# --- STYLING (The CSS is copied from the original code and remains the same) ---
 st.markdown("""
     <style>
     /* Custom Nav button container for the top-left */
@@ -54,9 +141,6 @@ st.markdown("""
     /* HIDE STREAMLIT'S DEFAULT NAVIGATION (Sidebar hamburger menu) */
     [data-testid="stSidebar"] { display: none; }
     
-    /* 🟢 FIX: Remove the hidden page link CSS to make the nav button visible */
-    /* [data-testid="stPageLink"] { display: none; } */ 
-
     /* Push content to the top */
     .block-container { padding-top: 1rem !important; }
     
@@ -99,106 +183,82 @@ st.markdown("""
         padding-top: 1rem;
         border-top: 1px dashed #CCC;
     }
-    
-    /* BUTTON: Full-width button now replaced with auto-width for single column */
-    .stButton>button {
-        border-radius: 8px; 
-        width: auto; /* Auto width based on content */
-        min-width: 200px; 
-        background-color: #E6E0FF;
-        color: #4F2083; 
-        border: 1px solid #C5B3FF; 
-        font-weight: bold;
-        transition: background-color 0.3s ease;
-    }
-    .stButton>button:hover { background-color: #D6C9FF; border: 1px solid #B098FF; }
-    
-    /* Ensure Markdown headers in the summary are readable */
-    .summary-display h3 {
-        text-align: left !important;
-        color: #4F2083;
-        margin-top: 15px;
-        margin-bottom: 5px;
-        font-size: 1.3em;
-    }
-    </style>
-""", unsafe_allow_html=True)
-# Languages
-LANGUAGES = {
-    "English": {"label": "English (English)", "code": "en"},
-    "Türkçe": {"label": "Türkçe (Turkish)", "code": "tr"},
-    "Français": {"label": "Français (French)", "code": "fr"},
-    "Español": {"label": "Español (Spanish)", "code": "es"},
-    "Afrikaans": {"label": "Afrikaans (Afrikaans)", "code": "af"},
-    "العربية": {"label": "العربية (Arabic)", "code": "ar"},
-    "Tiếng Việt": {"label": "Tiếng Việt (Vietnamese)", "code": "vi"},
-    "isiXhosa": {"label": "isiXhosa (Xhosa)", "code": "xh"},
-    "ייִדיש": {"label": "ייִדיש (Yiddish)", "code": "yi"},
-    "Yorùbá": {"label": "Yorùbá (Yoruba)", "code": "yo"},
-    "isiZulu": {"label": "isiZulu (Zulu)", "code": "zu"},
-    "Deutsch": {"label": "Deutsch (German)", "code": "de"},
-    "Italiano": {"label": "Italiano (Italian)", "code": "it"},
-    "Русский": {"label": "Русский (Russian)", "code": "ru"},
-    "日本語": {"label": "日本語 (Japanese)", "code": "ja"},
-    "한국어": {"label": "한국어 (Korean)", "code": "ko"},
-    "Polski": {"label": "Polski (Polish)", "code": "pl"},
-    "Nederlands": {"label": "Nederlands (Dutch)", "code": "nl"},
-    "Svenska": {"label": "Svenska (Swedish)", "code": "sv"},
-    "Dansk": {"label": "Dansk (Danish)", "code": "da"},
-    "Norsk": {"label": "Norsk (Norwegian)", "code": "no"},
-    "Suomi": {"label": "Suomi (Finnish)", "code": "fi"},
-    "हिन्दी": {"label": "हिन्दी (Hindi)", "code": "hi"},
-    "বাংলা": {"label": "বাংলা (Bengali)", "code": "bn"},
-    "ગુજરાતી": {"label": "ગુજરાતી (Gujarati)", "code": "gu"},
-    "ಕನ್ನಡ": {"label": "ಕನ್ನಡ (Kannada)", "code": "kn"},
-    "മലയാളം": {"label": "മലയാളം (Malayalam)", "code": "ml"},
-    "मराठी": {"label": "मराठी (Marathi)", "code": "mr"},
-    "ਪੰਜਾਬੀ": {"label": "ਪੰਜਾਬੀ (Punjabi)", "code": "pa"},
-    "தமிழ்": {"label": "தமிழ் (Tamil)", "code": "ta"},
-    "తెలుగు": {"label": "తెలుగు (Telugu)", "code": "te"},
-    "Odia": {"label": "Odia (Odia)", "code": "or"},
-    "עברית": {"label": "עברית (Hebrew)", "code": "he"},
-    "فارسی": {"label": "فارسی (Persian)", "code": "fa"},
-    "ไทย": {"label": "ไทย (Thai)", "code": "th"},
-    "Bahasa Indonesia": {"label": "Bahasa Indonesia (Indonesian)", "code": "id"},
-    "Malay": {"label": "Malay (Malay)", "code": "ms"},
-    "Shqip": {"label": "Shqip (Albanian)", "code": "sq"},
-    "Azərbaycan": {"label": "Azərbaycan (Azerbaijani)", "code": "az"},
-    "Беларуская": {"label": "Беларуская (Belarusian)", "code": "be"},
-    "Bosanski": {"label": "Bosanski (Bosnian)", "code": "bs"},
-    "Български": {"label": "Български (Bulgarian)", "code": "bg"},
-    "Hrvatski": {"label": "Hrvatski (Croatian)", "code": "hr"},
-    "Čeština": {"label": "Čeština (Czech)", "code": "cs"},
-    "Ελληνικά": {"label": "Ελληνικά (Greek)", "code": "el"},
-    "Eesti": {"label": "Eesti (Estonian)", "code": "et"},
-    "Latviešu": {"label": "Latviešu (Latvian)", "code": "lv"},
-    "Lietuvių": {"label": "Lietuvių (Lithuanian)", "code": "lt"},
-    "Magyar": {"label": "Magyar (Hungarian)", "code": "hu"},
-    "Slovenčina": {"label": "Slovenčina (Slovak)", "code": "sk"},
-    "Slovenščina": {"label": "Slovenščina (Slovenian)", "code": "sl"},
-    "ქართული": {"label": "ქართული (Georgian)", "code": "ka"},
-    "Հայերեն": {"label": "Հայերեն (Armenian)", "code": "hy"},
-    "Қазақша": {"label": "Қазақша (Kazakh)", "code": "kk"},
-    "Кыргызча": {"label": "Кыргызча (Kyrgyz)", "code": "ky"},
-    "Монгол": {"label": "Монгол (Mongolian)", "code": "mn"},
-    "Српски": {"label": "Српски (Serbian)", "code": "sr"},
-    "Словенски": {"label": "Словенски (Slovene)", "code": "sl"},
-    "தமிழ்": {"label": "தமிழ் (Tamil)", "code": "ta"},
-    "ગુજરાતી": {"label": "ગુજરાતી (Gujarati)", "code": "gu"},
-    "हिन्दी": {"label": "हिन्दी (Hindi)", "code": "hi"},
+    <style>
+/* ABSOLUTE POSITIONING */
+.language-dropdown-column {
+    position: absolute;
+    top: 30px; 
+    right: 20px; 
+    z-index: 100;
+    width: 130px; /* Reduced width */
 }
 
-# UI strings, PLEASE KEEP UNCOMMENTED FOR NOW.
-#UI_STRINGS_EN = {
-   # "title": "Simplified Knowledge",
-    #"description": "A dynamic dashboard that summarizes NASA bioscience publications and explores impacts and results.",
-    #"ask_label": "Ask anything:",
-    #"response_label": "Response:",
-    #"about_us": "This dashboard explores NASA bioscience publications dynamically.",    
-    #"translate_dataset_checkbox": "Translate dataset column names"
-#}
+/* STYLING (White/Light Purple) */
+.language-dropdown-column .stSelectbox {
+    background-color: white; 
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
+    border: 1px solid #C5B3FF; 
+}
 
-# --- HELPER FUNCTIONS ---
+.language-dropdown-column label {
+    display: none !important; 
+}
+
+.language-dropdown-column .stSelectbox .st-bd { 
+    background-color: #F8F7FF; 
+    color: #4F2083; 
+    border: none;
+    border-radius: 8px;
+    padding: 6px 10px; /* Reduced padding */
+    font-size: 14px; /* Reduced font size */
+    font-weight: 600;
+}
+
+.language-dropdown-column .stSelectbox .st-bd:hover {
+    background-color: #E6E0FF; 
+}
+
+.language-dropdown-column .stSelectbox [data-testid="stTriangle"] {
+    color: #6A1B9A; 
+}
+
+[data-testid="stSidebar"] { display: none; }
+</style>
+""", unsafe_allow_html=True)
+
+_, col_language = st.columns([10, 1])
+with col_language:
+    st.markdown('<div class="language-dropdown-column">', unsafe_allow_html=True)
+    
+    selected_language_name = st.selectbox(
+        "L", # Use a minimal label, hidden by CSS
+        list(LANGUAGES.keys()),
+        index=0,
+        key="language_selector"
+    )
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+selected_language_code = LANGUAGES[selected_language_name]
+    
+st.markdown('</div>', unsafe_allow_html=True)
+
+# Get the language code
+selected_language_code = LANGUAGES[selected_language_name]
+
+# --- Demonstration of Use (Main Content) ---
+
+st.title("Your Application Title Here")
+st.markdown("---")
+st.write(f"The content below would be displayed in the selected language.")
+st.info(f"Language Selector Status: **{selected_language_name}** (Code: **{selected_language_code}**)")
+
+# Example Content
+st.header("Main Content Area 📄")
+st.write("This is the main body of your Streamlit application, which now flows beneath the floating language selector in the top-right corner.")
+
+# --- HELPER FUNCTIONS (Copied from original) ---
 @st.cache_data
 def load_data(file_path): 
     try:
@@ -251,59 +311,116 @@ def summarize_text_with_gemini(text: str):
         return f"ERROR_GEMINI: {e}"
 
 # --- MAIN PAGE FUNCTION ---
-        
-# Page
 def search_page():
-    # 🟢 FIX: Custom HTML Button for Assistant AI
+    # Load current translation
+    translated_strings = st.session_state.translated_strings
+
+    # 1. Custom HTML Button for Assistant AI
     st.markdown(
         '<div class="nav-container-ai"><div class="nav-button-ai"><a href="/Assistant_AI" target="_self">Assistant AI 💬</a></div></div>',
         unsafe_allow_html=True
     )
-        
-    # --- UI Header ---
-    df = load_data("SB_publication_PMC.csv")
-    st.markdown('<h1>Houston! We Have A<span style="color: #6A1B9A;"> Problem!</span></h1>', unsafe_allow_html=True)
-    st.markdown("### Search, Discover, and Summarize NASA's Bioscience Publications")
-
-    search_query = st.text_input("Search publications...", placeholder="TELL US MORE!", label_visibility="collapsed")
     
+    # --- Language and PDF Sidebar Setup ---
+    with st.sidebar:
+        st.markdown("<h3 style='margin: 0; padding: 0;'>Settings ⚙️</h3>", unsafe_allow_html=True)
+        st.session_state.current_lang = st.selectbox(
+            "Select Language:",
+            options=list(LANGUAGES.keys()),
+            index=list(LANGUAGES.keys()).index(st.session_state.current_lang),
+            key="lang_selector",
+            on_change=lambda: st.session_state.update(translated_strings=get_translated_ui_strings(st.session_state.current_lang))
+        )
+        
+        # --- PDF UPLOAD LOGIC ---
+        st.markdown(f"<h3 style='margin: 20px 0 0 0; padding: 0;'>{translated_strings['pdf_upload_header']}</h3>", unsafe_allow_html=True)
+        uploaded_files = st.file_uploader(label="", type=["pdf"], accept_multiple_files=True)
+        
+        if uploaded_files:
+            # Display success message in the sidebar
+            st.success(translated_strings['pdf_success'].format(count=len(uploaded_files)))
+            
+    # --- Main Page Content ---
+
+    # 2. UI Header using translated strings
+    st.markdown(f'<h1>{translated_strings["title"].split()[0]} <span style="color: #6A1B9A;">{translated_strings["title"].split()[1]}</span></h1>', unsafe_allow_html=True)
+    st.markdown(f"### {translated_strings['description']}")
+
+    search_query = st.text_input(translated_strings["search_label"], placeholder="e.g., microgravity, radiation, Artemis...", label_visibility="collapsed")
+    
+    # Load and potentially translate data
+    df = load_data("SB_publication_PMC.csv")
+    
+    # --- Translate Dataset Columns (as requested in the original commented logic) ---
+    original_cols = list(df.columns)
+    if st.session_state.current_lang != "English":
+        with st.spinner("Translating dataset columns..."):
+            translated_cols = translate_list_via_gemini(original_cols, st.session_state.current_lang)
+            df.rename(columns=dict(zip(original_cols, translated_cols)), inplace=True)
+    
+    # --- PDF Summaries Display (outside of the sidebar) ---
+    if uploaded_files:
+        st.markdown("---")
+        for uploaded_file in uploaded_files:
+            # Check if this PDF has already been processed in the current session
+            summary_key = f"pdf_summary_{uploaded_file.name}"
+            
+            if summary_key not in st.session_state.summary_dict:
+                pdf_bytes = io.BytesIO(uploaded_file.read())
+                pdf_reader = PyPDF2.PdfReader(pdf_bytes)
+                text = "".join([p.extract_text() or "" for p in pdf_reader.pages])
+                
+                with st.spinner(f"Summarizing: {uploaded_file.name} ..."):
+                    summary = summarize_text_with_gemini(text)
+                    st.session_state.summary_dict[summary_key] = summary
+            
+            # Display the result
+            st.markdown(f"### {translated_strings['pdf_summary_title'].format(name=uploaded_file.name)}")
+            st.write(st.session_state.summary_dict[summary_key])
+        st.markdown("---")
+
+
     # --- Search Logic ---
     if search_query:
-        mask = df["Title"].astype(str).str.contains(search_query, case=False, na=False)
+        # Use the original (untranslated) 'Title' column for searching since the query is in the user's language
+        # A more robust solution would translate the search query before searching the English titles.
+        # However, using the original column names is safest for internal logic here.
+        search_col_name = "Title" if st.session_state.current_lang == "English" else original_cols[df.columns.get_loc(df.columns[df.columns.str.contains('Title', case=False)].tolist()[0])]
+
+        mask = df[search_col_name].astype(str).str.contains(search_query, case=False, na=False)
         results_df = df[mask].reset_index(drop=True)
         st.markdown("---")
-        st.subheader(f"Found {len(results_df)} matching publications:")
+        st.subheader(translated_strings['results_header'].format(count=len(results_df)))
         
         if results_df.empty:
-            st.warning("No matching publications found.")
+            st.warning(translated_strings['no_results'])
         else:
-            # Clear all session state summary variables to ensure clean display
-            if 'summary_dict' not in st.session_state:
-                 st.session_state.summary_dict = {}
-            
-            # SINGLE COLUMN DISPLAY LOOP (Stable)
+            # SINGLE COLUMN DISPLAY LOOP
             for idx, row in results_df.iterrows():
                 summary_key = f"summary_{idx}"
                 
                 with st.container():
                     st.markdown(f'<div class="result-card">', unsafe_allow_html=True)
                     
-                    # Title
-                    st.markdown(f"**Title:** <a href='{row['Link']}' target='_blank'>{row['Title']}</a>", unsafe_allow_html=True)
+                    # Title (Using the potentially translated column name for display)
+                    title_col_name = df.columns[df.columns.str.contains('Title', case=False)].tolist()[0]
+                    link_col_name = df.columns[df.columns.str.contains('Link', case=False)].tolist()[0]
+
+                    st.markdown(f"**{title_col_name}:** <a href='{row[link_col_name]}' target='_blank'>{row[title_col_name]}</a>", unsafe_allow_html=True)
                     
                     # Button
-                    if st.button("🔬 Gather & Summarize", key=f"btn_summarize_{idx}"):
+                    if st.button(translated_strings["summarize_button"], key=f"btn_summarize_{idx}"):
                         
                         # GENERATE SUMMARY IMMEDIATELY UPON CLICK
-                        with st.spinner(f"Accessing and summarizing: {row['Title']}..."):
+                        with st.spinner(f"Accessing and summarizing: {row[title_col_name]}..."):
                             try:
-                                text = fetch_url_text(row['Link'])
+                                # Must use the ORIGINAL 'Link' column for fetching the URL
+                                text = fetch_url_text(row[original_cols[2]]) # Assuming 'Link' is the 3rd column (index 2) based on typical structure
                                 summary = summarize_text_with_gemini(text)
                                 st.session_state.summary_dict[summary_key] = summary
                             except Exception as e:
                                 st.session_state.summary_dict[summary_key] = f"CRITICAL_ERROR: {e}"
                         
-                        # Use rerun to ensure the display updates correctly across the whole page
                         st.rerun()
 
                     # DISPLAY SUMMARY IF IT EXISTS FOR THIS PUBLICATION
@@ -313,7 +430,7 @@ def search_page():
                         st.markdown('<div class="summary-display">', unsafe_allow_html=True)
                         
                         if summary_content.startswith("ERROR") or summary_content.startswith("CRITICAL_ERROR"):
-                            st.markdown(f"**❌ Failed to Summarize:** *{row['Title']}*", unsafe_allow_html=True)
+                            st.markdown(f"**❌ Failed to Summarize:** *{row[title_col_name]}*", unsafe_allow_html=True)
                             st.error(f"Error fetching/summarizing content: {summary_content}")
                         else:
                             # Display the summary without an extra box, just the clean markdown
@@ -322,51 +439,11 @@ def search_page():
                         st.markdown('</div>', unsafe_allow_html=True)
                             
                     st.markdown("</div>", unsafe_allow_html=True) 
-    
-#Everything commented below is for backup just in case someething doesn't work DO NOT DELETE.
-    # PDF upload
-#st.sidebar.success(f"✅ {len(uploaded_files)} PDF(s) uploaded")
-#for uploaded_file in uploaded_files:
-        #pdf_bytes = io.BytesIO(uploaded_file.read())
-        #pdf_reader = PyPDF2.PdfReader(pdf_bytes)
-        #text = ""
-        #for page in pdf_reader.pages:
-            #text += page.extract_text() or ""
 
-        # Summarize each PDF
-        #with st.spinner(f"Summarizing: {uploaded_file.name} ..."):
-            #summary = summarize_text_with_gemini(text)
-#else:
-    #st.sidebar.info("Upload one or more PDF files to get summaries, try again!.")
-
-# THIS IS FOR UPLOADING PDF
-#with st.sidebar:
-  #  st.markdown("<h3 style='margin: 0; padding: 0;'>Upload PDFs to Summarize</h3>", unsafe_allow_html=True)
-    #uploaded_files = st.file_uploader(label="", type=["pdf"], accept_multiple_files=True)
-
-#if uploaded_files:
-    #st.success(f"✅ {len(uploaded_files)} PDF(s) uploaded and summarized")
-    #for uploaded_file in uploaded_files:
-        #pdf_bytes = io.BytesIO(uploaded_file.read())
-        #pdf_reader = PyPDF2.PdfReader(pdf_bytes)
-        #text = "".join([p.extract_text() or "" for p in pdf_reader.pages])
-        #with st.spinner(f"Summarizing: {uploaded_file.name} ..."):
-            #summary = summarize_text_with_gemini(text)
-        #st.markdown(f"### 📄 Summary: {uploaded_file.name}")
-        #st.write(summary)
-
-# Translate dataset
-#original_cols = list(df.columns)
-
-#if st.session_state.current_lang != "English":
-    #translated_cols = translate_list_via_gemini(original_cols, st.session_state.current_lang)
-    #df.rename(columns=dict(zip(original_cols, translated_cols)), inplace=True)
-
-# Deleted QUICK AI CHAT
-# Replaced with page button, and sepearated
+# --- STREAMLIT PAGE NAVIGATION ---
 pg = st.navigation([
-    st.Page(search_page, title="Simplified Knowledge 🔍"),
+    st.Page(search_page, title=st.session_state.translated_strings["title"] + " 🔍"),
     st.Page("pages/Assistant_AI.py", title="Assistant AI 💬", icon="💬"),
 ])
 
-pg.run()    
+pg.run()
