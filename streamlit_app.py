@@ -355,12 +355,12 @@ def search_page():
         #st.markdown(f"### 📄 Summary: {uploaded_file.name}")
         #st.write(summary)
 
-# Translate dataset
-#original_cols = list(df.columns)
+#Translate dataset
+original_cols = list(df.columns)
 
-#if st.session_state.current_lang != "English":
-    #translated_cols = translate_list_via_gemini(original_cols, st.session_state.current_lang)
-    #df.rename(columns=dict(zip(original_cols, translated_cols)), inplace=True)
+if st.session_state.current_lang != "English":
+    translated_cols = translate_list_via_gemini(original_cols, st.session_state.current_lang)
+    df.rename(columns=dict(zip(original_cols, translated_cols)), inplace=True)
 
 # Deleted QUICK AI CHAT
 # Replaced with page button, and sepearated
